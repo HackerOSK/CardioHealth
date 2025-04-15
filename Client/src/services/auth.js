@@ -7,7 +7,7 @@ import {
 } from 'firebase/auth';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api'; // replace with your backend URL
+const API_URL = 'http://34.171.135.71/api/'; // replace with your backend URL
 
 const axiosInstance = axios.create({
     baseURL: API_URL,
