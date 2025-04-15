@@ -32,7 +32,7 @@ const Dashboard = () => {
 
 
    
-const API_URL = 'http://34.171.135.71/api'; // change to your backend URL
+const API_URL = 'https://34.171.135.71/api'; // change to your backend URL
 
 const fetchLatestReport = async () => {
     try {

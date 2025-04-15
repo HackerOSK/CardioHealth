@@ -7,7 +7,7 @@ import { auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 
 // Configure API URL based on environment
-const API_URL = 'http://127.0.0.1:5000';
+const API_URL = 'https://34.171.135.71';
 
 const HealthQuestionnaire = () => {
     const navigate = useNavigate();
