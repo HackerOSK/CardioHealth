@@ -30,7 +30,7 @@ from firebase_admin import _utils
 
 _STORAGE_ATTRIBUTE = '_storage'
 
-def bucket(name=None, app=None):
+def bucket(name=None, app=None) -> storage.Bucket:
     """Returns a handle to a Google Cloud Storage bucket.
 
     If the name argument is not provided, uses the 'storageBucket' option specified when
@@ -55,8 +55,13 @@ def bucket(name=None, app=None):
 class _StorageClient:
     """Holds a Google Cloud Storage client instance."""
 
+    STORAGE_HEADERS = {
+        'X-GOOG-API-CLIENT': _utils.get_metrics_header(),
+    }
+
     def __init__(self, credentials, project, default_bucket):
-        self._client = storage.Client(credentials=credentials, project=project)
+        self._client = storage.Client(
+            credentials=credentials, project=project, extra_headers=self.STORAGE_HEADERS)
         self._default_bucket = default_bucket
 
     @classmethod

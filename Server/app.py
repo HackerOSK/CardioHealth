@@ -10,11 +10,11 @@ from modelTest import predict_heart_disease
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)
-
+CORS(app, supports_credentials=True)
 # Initialize Firebase Admin
 cred = credentials.Certificate("cardiohealth-e95c7-firebase-adminsdk-fbsvc-0b8e7d2709.json")
 firebase_admin.initialize_app(cred)
+auth = firebase_admin.auth
 
 # MySQL Configuration
 db_config = {
@@ -24,6 +24,27 @@ db_config = {
     'database': 'cardiohealth'
 }
 
+def add_user_to_db(user_id, email, display_name):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        
+        cursor.execute(
+            "INSERT INTO users (ID, email, name) VALUES (%s, %s, %s)",
+            (user_id, email, display_name)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error adding user to database: {e}")
+        if conn:
+            conn.close()
+        return False
+    return True
+
+
 def get_db_connection():
     try:
         connection = mysql.connector.connect(**db_config)
@@ -32,116 +53,123 @@ def get_db_connection():
         print(f"Error connecting to MySQL: {e}")
         return None
 
-def verify_token(f):
-    """Decorator for verifying Firebase ID tokens"""
+
+
+def verify_firebase_token(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check if the Authorization header exists
         auth_header = request.headers.get('Authorization')
-        
         if not auth_header:
-            return jsonify({'error': 'No token provided'}), 401
+            return jsonify({'error': 'No authorization header provided'}), 401
+        
+        # Extract the token
+        token = auth_header.split('Bearer ')[1] if 'Bearer ' in auth_header else None
+        if not token:
+            return jsonify({'error': 'Invalid token format'}), 401
         
         try:
-            token = auth_header.split('Bearer ')[1]
+            # Verify the token with Firebase Admin SDK
             decoded_token = auth.verify_id_token(token)
+            # Add the decoded token to the request context
             request.user = decoded_token
             return f(*args, **kwargs)
         except Exception as e:
-            return jsonify({'error': str(e)}), 401
-    
+            print(f"Token verification error: {e}")
+            return jsonify({'error': 'Invalid or expired token'}), 401
+            
     return decorated_function
 
 
-# Authentication Routes
+# xRoutes
 @app.route('/api/auth/register', methods=['POST'])
 def register():
-    """Register a new user with email and password"""
     try:
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
         display_name = data.get('displayName')
 
+        # Create user in Firebase
         user = auth.create_user(
             email=email,
             password=password,
-            display_name=display_name,
-            email_verified=False
+            display_name=display_name
         )
+        
+        # Add user to database
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO users (ID, EMAIL, NAME) VALUES (%s, %s, %s)",
+            (user.uid, email, display_name)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
 
         return jsonify({
-            'message': 'Successfully created user',
-            'userId': user.uid
+            'success': True,
+            'userId': user.uid,
+            'email': email,
+            'displayName': display_name
         }), 201
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    """Login with email and password"""
     try:
         data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
+        print(data)
+        email = data['body']['email']
+        password = data['body']['password']
+        print(email, password)
 
-        # Verify the user credentials using Firebase Admin SDK
+        # Sign in with Firebase
         user = auth.get_user_by_email(email)
         
-        # Add user to database
-        add_user_to_db(user.uid, user.email, user.display_name)
         
         # Check if user exists in database
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM users WHERE ID = %s", (user.uid,))
-        exists = cursor.fetchone()[0]
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE EMAIL = %s", (email,))
+        user_data = cursor.fetchone()
         cursor.close()
         conn.close()
-        
+
+        if not user_data:
+            return jsonify({'error': 'User not found'}), 404
+
         return jsonify({
+            'success': True,
             'userId': user.uid,
             'email': user.email,
             'displayName': user.display_name,
-            'emailVerified': user.email_verified,
-            'isExisting': 1 if exists > 0 else 0
+            'photoURL': user.photo_url if hasattr(user, 'photo_url') else None
         }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
-
-
-@app.route('/api/auth/reset-password', methods=['POST'])
-def reset_password():
-    """Generate password reset link"""
-    try:
-        data = request.get_json()
-        email = data.get('email')
-
-        reset_link = auth.generate_password_reset_link(email)
-        
-        # TODO: Implement email sending functionality
-        return jsonify({
-            'message': 'Password reset link generated',
-            'resetLink': reset_link
-        }), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-
 
 @app.route('/api/auth/google/verify', methods=['POST'])
 def verify_google_token():
-    """Verify Google Sign-In Token"""
     try:
-        data = request.get_json()
-        id_token = data.get('idToken')
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            return jsonify({'error': 'No token provided'}), 401
 
-        # Verify the ID token
-        decoded_token = auth.verify_id_token(id_token)
+        token = auth_header.split('Bearer ')[1]
+        decoded_token = auth.verify_id_token(token)
         
-        # Get user info
+        # Get user info from Firebase
         user = auth.get_user(decoded_token['uid'])
         
         # Add user to database
@@ -160,31 +188,73 @@ def verify_google_token():
             'email': user.email,
             'displayName': user.display_name,
             'photoURL': user.photo_url,
-            'isExisting': 1 if exists > 0 else 0
+            'isExisting': exists > 0
         }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-
-# Protected Routes
-@app.route('/api/user/profile', methods=['GET'])
-@verify_token
-def get_user_profile():
-    """Get user profile (Protected Route)"""
+@app.route('/api/auth/sync-user', methods=['POST'])
+@verify_firebase_token
+def sync_user():
     try:
-        user_id = request.user['uid']
-        user = auth.get_user(user_id)
+        # Debug logging
+        print("Headers received:", request.headers)
+        print("Token info:", request.user)  # Added by verify_firebase_token
+        
+        data = request.get_json()
+        print("Request data:", data)
+        
+        user_id = data.get('userId')
+        body = data.get('body', {})
+        email = body.get('email')
+        display_name = body.get('displayName')
+        
+        if not all([user_id, email, display_name]):
+            return jsonify({
+                'error': 'Missing required fields',
+                'received': {
+                    'userId': user_id,
+                    'email': email,
+                    'displayName': display_name
+                }
+            }), 400
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute("SELECT ID FROM users WHERE ID = %s", (user_id,))
+        user_exists = cursor.fetchone()
+        
+        if not user_exists:
+            # Create new user
+            cursor.execute(
+                "INSERT INTO users (ID, EMAIL, NAME) VALUES (%s, %s, %s)",
+                (user_id, email, display_name)
+            )
+        else:
+            # Update existing user
+            cursor.execute(
+                "UPDATE users SET EMAIL = %s, NAME = %s WHERE ID = %s",
+                (email, display_name, user_id)
+            )
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
 
         return jsonify({
-            'userId': user.uid,
-            'email': user.email,
-            'displayName': user.display_name,
-            'photoURL': user.photo_url,
-            'emailVerified': user.email_verified
+            'success': True,
+            'message': 'User synchronized successfully',
+            'isNewUser': not user_exists
         }), 200
 
     except Exception as e:
+        print(f"Error syncing user: {e}")
         return jsonify({'error': str(e)}), 400
 
 # Add new route to check if user exists
@@ -210,104 +280,142 @@ def check_user():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-def add_user_to_db(user_id, email, name):
+def add_user_to_db(user_id, email, display_name):
     try:
         conn = get_db_connection()
-        if not conn:
-            return False
-            
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO users (ID, email, name) 
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE email=%s, name=%s
-        """, (user_id, email, name, email, name))
         
-        conn.commit()
+        # Check if user already exists
+        cursor.execute("SELECT COUNT(*) FROM users WHERE ID = %s", (user_id,))
+        exists = cursor.fetchone()[0]
+        
+        if not exists:
+            # Insert new user
+            cursor.execute(
+                "INSERT INTO users (ID, EMAIL, NAME) VALUES (%s, %s, %s)",
+                (user_id, email, display_name)
+            )
+            conn.commit()
+        
         cursor.close()
         conn.close()
-        return True
         
-    except Error as e:
-        print(f"Database error: {e}")
-        return False
+    except Exception as e:
+        print(f"Error adding user to database: {e}")
+        if conn:
+            conn.close()
 
 @app.route('/api/predict', methods=['POST'])
-@verify_token
+@verify_firebase_token
 def make_prediction():
     try:
         # Get user ID from the verified token
         user_id = request.user['uid']
-        
-        # Get input data
-        data = request.get_json()
-        required_fields = ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 
-                         'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 
-                         'ca', 'thal']
-        
-        # Validate input data
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
-            
-        # Make prediction
-        result = predict_heart_disease(data)
-        
-        if 'error' in result:
-            return jsonify(result), 400
-            
-        # Extract prediction and confidence
-        prediction = 1 if result['prediction'] == "Heart Disease exists" else 0
-        confidence = float(result['confidence'].strip('%')) / 100
-        
-        # Store in database
+        user_email = request.user['email']
+        user_name = request.user.get('name', '')
+
+        # First, ensure user exists in database
         conn = get_db_connection()
         if not conn:
             return jsonify({'error': 'Database connection failed'}), 500
-            
+
         cursor = conn.cursor()
         
-        # Insert into reports table
-        insert_query = """
-            INSERT INTO reports (
-                userId, age, sex, cp, trestbps, chol, fbs, restecg, 
-                thalach, exang, oldpeak, slope, ca, thal, 
-                prediction, confidence, created_at
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s
+        # Check if user exists
+        cursor.execute("SELECT ID FROM users WHERE ID = %s", (user_id,))
+        user_exists = cursor.fetchone()
+        
+        if not user_exists:
+            # Create user if doesn't exist
+            try:
+                cursor.execute(
+                    "INSERT INTO users (ID, email, name) VALUES (%s, %s, %s)",
+                    (user_id, user_email, user_name)
+                )
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                return jsonify({'error': f'Failed to create user: {str(e)}'}), 500
+
+        # Get prediction data
+        data = request.get_json()
+        
+        # Validate and process prediction data
+        validated_data = {
+            'age': int(data['age']),
+            'sex': int(data['sex']),
+            'cp': int(data['cp']),
+            'trestbps': int(data['trestbps']),
+            'chol': int(data['chol']),
+            'fbs': int(data['fbs']),
+            'restecg': int(data['restecg']),
+            'thalach': int(data['thalach']),
+            'exang': int(data['exang']),
+            'oldpeak': float(data['oldpeak']),
+            'slope': int(data['slope']),
+            'ca': int(data['ca']),
+            'thal': int(data['thal'])
+        }
+
+        # Make prediction
+        result = predict_heart_disease(validated_data)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+
+        # Store prediction in database
+        try:
+            insert_query = """
+                INSERT INTO reports (
+                    userId, age, sex, cp, trestbps, chol, fbs, restecg, 
+                    thalach, exang, oldpeak, slope, ca, thal, 
+                    prediction, confidence
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """
+            
+            prediction = 1 if result['prediction'] == "Heart Disease exists" else 0
+            confidence = float(result['confidence'].strip('%')) / 100
+            
+            values = (
+                user_id, validated_data['age'], validated_data['sex'],
+                validated_data['cp'], validated_data['trestbps'],
+                validated_data['chol'], validated_data['fbs'],
+                validated_data['restecg'], validated_data['thalach'],
+                validated_data['exang'], validated_data['oldpeak'],
+                validated_data['slope'], validated_data['ca'],
+                validated_data['thal'], prediction, confidence
             )
-        """
+            
+            cursor.execute(insert_query, values)
+            report_id = cursor.lastrowid
+            conn.commit()
+
+            return jsonify({
+                'reportId': report_id,
+                'prediction': result['prediction'],
+                'confidence': result['confidence'],
+                'risk_factors': result.get('risk_factors', [])
+            }), 200
+
+        except Exception as e:
+            conn.rollback()
+            return jsonify({'error': f'Failed to save report: {str(e)}'}), 500
         
-        values = (
-            user_id, data['age'], data['sex'], data['cp'], data['trestbps'],
-            data['chol'], data['fbs'], data['restecg'], data['thalach'],
-            data['exang'], data['oldpeak'], data['slope'], data['ca'],
-            data['thal'], prediction, confidence, datetime.now()
-        )
-        
-        cursor.execute(insert_query, values)
-        report_id = cursor.lastrowid
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        # Return prediction result along with report ID
-        return jsonify({
-            'reportId': report_id,
-            'prediction': result['prediction'],
-            'confidence': result['confidence'],
-            'risk_factors': result['risk_factors']
-        }), 200
-        
+        finally:
+            cursor.close()
+            conn.close()
+
     except Exception as e:
-        logger.error(f"Prediction API error: {str(e)}")
+        print(f"Prediction API error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/reports/latest', methods=['GET'])
-@verify_token
+@verify_firebase_token
 def get_latest_report():
     try:
+        # Get user ID from the verified token
         user_id = request.user['uid']
         
         conn = get_db_connection()
@@ -328,10 +436,10 @@ def get_latest_report():
                 thalach as heartRate,
                 prediction,
                 confidence,
-                createdAt as timestamp
+                created_at as timestamp
             FROM reports 
             WHERE userId = %s 
-            ORDER BY createdAt DESC 
+            ORDER BY created_at DESC 
             LIMIT 1
         """
         
@@ -342,7 +450,7 @@ def get_latest_report():
         conn.close()
         
         if not report:
-            return jsonify({'error': 'No reports found'}), 404
+            return jsonify({'error': 'No reports found'}), 200
 
         return jsonify({
             'prediction': {
@@ -358,9 +466,8 @@ def get_latest_report():
         })
 
     except Exception as e:
-        print(f"Error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        print(f"Error in get_latest_report: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-

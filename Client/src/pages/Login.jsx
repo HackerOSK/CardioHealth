@@ -19,15 +19,14 @@ const Login = () => {
         setLoading(true);
         
         try {
-            const user = await loginUser(email, password);
-            // Only pass serializable data
+            const result = await loginUser(email, password);
             navigate('/dashboard', { 
                 state: { 
                     userInfo: {
-                        email: user.email,
-                        displayName: user.displayName,
-                        uid: user.uid,
-                        isExisting: user.isExisting
+                        email: result.email,
+                        displayName: result.displayName,
+                        uid: result.userId,
+                        photoURL: result.photoURL
                     }
                 }
             });

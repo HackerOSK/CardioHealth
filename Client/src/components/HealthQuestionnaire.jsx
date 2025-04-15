@@ -6,6 +6,9 @@ import { ArrowBack, Assignment, Warning } from '@mui/icons-material';
 import { auth } from '../firebase/config';
 import { useNavigate } from 'react-router-dom';
 
+// Configure API URL based on environment
+const API_URL = 'http://127.0.0.1:5000';
+
 const HealthQuestionnaire = () => {
     const navigate = useNavigate();
     const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -45,67 +48,73 @@ const HealthQuestionnaire = () => {
         }
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
         setSubmitting(true);
-        // Transform questionnaire answers to model format
-        const modelData = {
-            age: answers.dateOfBirth ? calculateAge(answers.dateOfBirth) : null,
-            sex: answers.sex,
-            cp: answers.cp, // chest pain type
-            trestbps: answers.trestbps, // resting blood pressure
-            chol: answers.chol, // cholesterol
-            fbs: answers.fbs, // fasting blood sugar
-            restecg: answers.restecg, // resting ECG results
-            thalach: answers.thalach, // maximum heart rate achieved
-            exang: answers.exang, // exercise induced angina
-            oldpeak: answers.oldpeak, // ST depression induced by exercise
-            slope: answers.slope, // slope of the peak exercise ST segment
-            ca: answers.ca, // number of major vessels colored by fluoroscopy
-            thal: answers.thal // thalassemia
-        };
-
-        // Validate that all required fields are present
-        const missingFields = Object.entries(modelData)
-            .filter(([_, value]) => value === null || value === undefined)
-            .map(([key]) => key);
-
-        if (missingFields.length > 0) {
-            console.error('Missing required fields:', missingFields);
-            setError('Please complete all required fields');
-            setSubmitting(false);
-            return;
-        }
 
         try {
-            const token = await auth.currentUser.getIdToken();
-            
-            const response = await fetch('http://192.168.1.7:5000/api/predict', {
+            // Get current user's token
+            const user = auth.currentUser;
+            if (!user) {
+                throw new Error('No authenticated user found');
+            }
+            const token = await user.getIdToken();
+
+            // Transform answers into model data format
+            const modelData = {
+                age: calculateAge(answers.dateOfBirth),
+                sex: answers.sex,
+                cp: parseInt(answers.cp),
+                trestbps: parseInt(answers.trestbps),
+                chol: parseInt(answers.chol),
+                fbs: parseInt(answers.fbs),
+                restecg: parseInt(answers.restecg),
+                thalach: parseInt(answers.thalach),
+                exang: parseInt(answers.exang),
+                oldpeak: parseFloat(answers.oldpeak),
+                slope: parseInt(answers.slope),
+                ca: parseInt(answers.ca),
+                thal: parseInt(answers.thal)
+            };
+
+            // Validate all required fields
+            const requiredFields = Object.keys(modelData);
+            const missingFields = requiredFields.filter(field => modelData[field] === undefined);
+
+            if (missingFields.length > 0) {
+                throw new Error(`Please complete all questions. Missing: ${missingFields.join(', ')}`);
+            }
+
+            const response = await fetch(`${API_URL}/api/predict`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify(modelData)
+                body: JSON.stringify(modelData),
+                credentials: 'include'
             });
 
             if (!response.ok) {
-                throw new Error('Prediction request failed');
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to submit assessment');
             }
 
             const result = await response.json();
             console.log('Prediction result:', result);
-            
-            // Redirect to dashboard after successful submission
-            navigate('/dashboard', { 
+
+            // Navigate to dashboard with success state
+            navigate('/dashboard', {
                 state: { 
                     assessmentCompleted: true,
-                    predictionResult: result 
+                    result: result
                 }
             });
-            
+
         } catch (error) {
-            console.error('Error:', error);
-            setError('Failed to submit assessment. Please try again.');
+            console.error('Submission error:', error);
+            setError(error.message);
         } finally {
             setSubmitting(false);
         }
@@ -335,6 +344,7 @@ const HealthQuestionnaire = () => {
 };
 
 export default HealthQuestionnaire;
+
 
 
 

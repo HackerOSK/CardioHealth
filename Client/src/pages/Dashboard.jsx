@@ -5,7 +5,18 @@ import axios from 'axios';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import PersonIcon from '@mui/icons-material/Person';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
+
+// Add the axios instance at the top of the file, after imports
+// const api = axios.create({
+//     baseURL: 'http://localhost:5000/api',
+//     withCredentials: true,
+//     headers: {
+//         'Content-Type': 'application/json'
+//     }
+// });
 
 const Dashboard = () => {
     const [user, setUser] = useState(null);
@@ -18,30 +29,63 @@ const Dashboard = () => {
     const location = useLocation();
 
     // Create axios instance
-    const api = axios.create({
-        baseURL: 'http://localhost:5000/api',
-        timeout: 10000
-    });
 
-    const fetchLatestReport = async (token) => {
-        try {
-            const response = await api.get('/reports/latest', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            
-            setLatestReport(response.data);
-            setError(null);
-        } catch (error) {
-            console.error('Error fetching report:', error);
-            if (error.response?.status !== 404) { // Ignore 404 (no reports found)
-                setError('Failed to fetch latest report');
-            }
-        } finally {
-            setLoading(false);
+
+   
+const API_URL = 'http://localhost:5000/api'; // change to your backend URL
+
+const fetchLatestReport = async () => {
+    try {
+        setLoading(true);
+
+        const user = auth.currentUser;
+        if (!user) {
+            throw new Error('User not authenticated');
         }
-    };
+
+        const idToken = localStorage.getItem('authToken');
+
+        const response = await axios({
+            method: 'get',
+            url: `${API_URL}/reports/latest`,
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+            }
+            // No `params` or `data` needed since backend gets user from token
+        });
+
+        console.log('Report response:', response.data);
+        setLatestReport(response.data);
+        if(response.data.error === 'No reports found') {
+            setLatestReport(null);
+        }
+        setError(null);
+
+    } catch (error) {
+        console.error('Error fetching latest report:', error);
+
+        if (axios.isAxiosError(error)) {
+            const status = error.response?.status;
+
+            if (status === 401) {
+                setError('Authentication failed. Please log in again.');
+            } else if (status === 404) {
+                setLatestReport(null); // No report available
+            } else {
+                setError('Something went wrong. Please try again later.');
+            }
+
+            console.error('Response:', error.response?.data);
+        } else {
+            setError('Unexpected error occurred.');
+        }
+    } finally {
+        setLoading(false);
+    }
+};
+    
+    
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
@@ -53,7 +97,8 @@ const Dashboard = () => {
                 });
 
                 try {
-                    const token = await firebaseUser.getIdToken();
+                    // Get fresh token and fetch report
+                    const token = await firebaseUser.getIdToken(true);
                     await fetchLatestReport(token);
                 } catch (error) {
                     console.error('Error getting token:', error);
@@ -121,14 +166,18 @@ const Dashboard = () => {
                 <div className="flex items-center justify-center p-4">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
+            ) : error ? (
+                <div className="text-red-600 p-4 text-center">
+                    <p>{error}</p>
+                    <button
+                        onClick={() => fetchLatestReport(auth.currentUser?.getIdToken())}
+                        className="mt-2 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        Retry
+                    </button>
+                </div>
             ) : (
-                <>
-                    {error ? (
-                        <div className="text-red-600 p-4">{error}</div>
-                    ) : (
-                        renderAssessmentResults()
-                    )}
-                </>
+                renderAssessmentResults()
             )}
         </div>
     );
@@ -136,8 +185,14 @@ const Dashboard = () => {
     const renderAssessmentResults = () => {
         if (!latestReport) {
             return (
-                <div className="text-gray-500">
-                    No assessment results available. Take your first assessment now!
+                <div className="text-gray-500 p-4 text-center">
+                    <p className="mb-4">No assessment results available yet.</p>
+                    <button
+                        onClick={handleStartTest}
+                        className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        Take Your First Assessment
+                    </button>
                 </div>
             );
         }
@@ -262,6 +317,11 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
+
+
+
+
 
 
 
