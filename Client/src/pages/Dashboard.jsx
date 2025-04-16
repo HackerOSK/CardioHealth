@@ -160,8 +160,8 @@ const fetchLatestReport = async () => {
     }
 
     const renderPredictionCard = () => (
-        <div className="col-span-2 bg-white p-6 rounded-xl shadow-sm">
-            <h2 className="text-2xl font-bold mb-4">Latest Heart Health Assessment</h2>
+        <div className="col-span-1 lg:col-span-2 bg-white p-4 sm:p-6 rounded-xl shadow-sm">
+            <h2 className="text-xl sm:text-2xl font-bold mb-4">Latest Heart Health Assessment</h2>
             {loading ? (
                 <div className="flex items-center justify-center p-4">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -204,13 +204,13 @@ const fetchLatestReport = async () => {
                         ? "bg-red-100 text-red-700" 
                         : "bg-green-100 text-green-700"
                 }`}>
-                    <h3 className="text-xl font-semibold">
+                    <h3 className="text-lg sm:text-xl font-semibold">
                         {latestReport.prediction.result}
                     </h3>
-                    <p>Confidence: {latestReport.prediction.confidence}</p>
+                    <p className="text-sm sm:text-base">Confidence: {latestReport.prediction.confidence}</p>
                 </div>
 
-                <div className="h-64">
+                <div className="h-48 sm:h-64">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={[
                             { name: 'BP', value: latestReport.vitals.bloodPressure },
@@ -226,7 +226,7 @@ const fetchLatestReport = async () => {
                     </ResponsiveContainer>
                 </div>
 
-                <p className="text-sm text-gray-500">
+                <p className="text-xs sm:text-sm text-gray-500">
                     Assessment date: {new Date(latestReport.timestamp).toLocaleDateString()}
                 </p>
             </div>
@@ -235,24 +235,26 @@ const fetchLatestReport = async () => {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* Show success message if assessment was just completed */}
-            {showAssessmentSuccess && (
-                <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 fixed top-4 right-4 rounded shadow-lg">
-                    <p className="font-medium">Assessment completed successfully!</p>
-                    <p className="text-sm">Your health report has been updated.</p>
-                </div>
-            )}
-
             {/* Navigation Bar */}
             <nav className="bg-white shadow-md">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between h-16">
-                        <div className="flex items-center">
-                            <FavoriteIcon sx={{ fontSize: 32, color: '#2563eb' }} />
-                            <span className="ml-2 text-2xl font-bold text-blue-600">CardioHealth</span>
+                <div className="max-w-7xl mx-auto px-4">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:h-16">
+                        <div className="flex items-center justify-between py-4 sm:py-0">
+                            <div className="flex items-center">
+                                <FavoriteIcon sx={{ fontSize: { xs: 24, sm: 32 }, color: '#2563eb' }} />
+                                <span className="ml-2 text-xl sm:text-2xl font-bold text-blue-600">CardioHealth</span>
+                            </div>
+                            <div className="sm:hidden">
+                                <button
+                                    onClick={handleLogout}
+                                    className="text-red-600 p-2"
+                                >
+                                    <LogoutIcon />
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <span className="text-gray-700">{user.email}</span>
+                        <div className="hidden sm:flex items-center gap-4">
+                            <span className="text-gray-700 truncate max-w-[200px]">{user?.email}</span>
                             <button
                                 onClick={handleLogout}
                                 className="flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100"
@@ -266,29 +268,29 @@ const fetchLatestReport = async () => {
             </nav>
 
             {/* Main Content */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                     {renderPredictionCard()}
                     
                     {/* Profile Card */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm">
-                        <div className="flex items-center gap-4 mb-4">
-                            <PersonIcon sx={{ fontSize: 24, color: '#2563eb' }} />
-                            <h2 className="text-xl font-semibold">Profile</h2>
+                    <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                            <PersonIcon sx={{ fontSize: { xs: 20, sm: 24 }, color: '#2563eb' }} />
+                            <h2 className="text-lg sm:text-xl font-semibold">Profile</h2>
                         </div>
-                        <div className="space-y-2">
-                            <p className="text-gray-600">Email: {user.email}</p>
-                            <p className="text-gray-600">Name: {user.displayName || 'Not set'}</p>
+                        <div className="space-y-2 text-sm sm:text-base">
+                            <p className="text-gray-600">Email: {user?.email}</p>
+                            <p className="text-gray-600">Name: {user?.displayName || 'Not set'}</p>
                         </div>
                     </div>
 
                     {/* Health Assessment Card */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm">
-                        <div className="flex items-center gap-4 mb-4">
-                            <AssessmentIcon sx={{ fontSize: 24, color: '#2563eb' }} />
-                            <h2 className="text-xl font-semibold">Health Assessment</h2>
+                    <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                            <AssessmentIcon sx={{ fontSize: { xs: 20, sm: 24 }, color: '#2563eb' }} />
+                            <h2 className="text-lg sm:text-xl font-semibold">Health Assessment</h2>
                         </div>
-                        <p className="text-gray-600 mb-4">
+                        <p className="text-gray-600 mb-4 text-sm sm:text-base">
                             {userStatus === 1 
                                 ? "Take our health assessment to update your heart health profile."
                                 : "Complete your initial health assessment to get started."}
@@ -302,21 +304,30 @@ const fetchLatestReport = async () => {
                     </div>
 
                     {/* Settings Card */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm">
-                        <div className="flex items-center gap-4 mb-4">
-                            <SettingsIcon sx={{ fontSize: 24, color: '#2563eb' }} />
-                            <h2 className="text-xl font-semibold">Settings</h2>
+                    <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                            <SettingsIcon sx={{ fontSize: { xs: 20, sm: 24 }, color: '#2563eb' }} />
+                            <h2 className="text-lg sm:text-xl font-semibold">Settings</h2>
                         </div>
-                        <p className="text-gray-600">Customize your account settings</p>
-                        <p className="text-gray-600">User Status: {userStatus ? 'Existing' : 'New'}</p>
+                        <p className="text-gray-600 text-sm sm:text-base">Customize your account settings</p>
+                        <p className="text-gray-600 text-sm sm:text-base">User Status: {userStatus ? 'Existing' : 'New'}</p>
                     </div>
                 </div>
             </div>
+
+            {/* Success Message */}
+            {showAssessmentSuccess && (
+                <div className="fixed bottom-4 right-4 bg-green-100 text-green-700 px-4 py-2 rounded-lg shadow-lg">
+                    Assessment completed successfully!
+                </div>
+            )}
         </div>
     );
 };
 
 export default Dashboard;
+
+
 
 
 
