@@ -93,7 +93,7 @@ const HealthQuestionnaire = () => {
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify(modelData),
-                credentials: 'include'
+        
             });
 
             if (!response.ok) {
